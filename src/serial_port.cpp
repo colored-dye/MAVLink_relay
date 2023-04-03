@@ -131,18 +131,18 @@ read_message(mavlink_message_t &message)
 	if (result > 0)
 	{
 		// the parsing
-		if (port_comm == 0) {
+		// if (port_comm == 0) {
 			msgReceived = mavlink_parse_char(MAVLINK_COMM_0, cp, &message, &status);
-		} else if (port_comm == 1) {
-			msgReceived = mavlink_parse_char(MAVLINK_COMM_1, cp, &message, &status);
-		}
+		// } else if (port_comm == 1) {
+			// msgReceived = mavlink_parse_char(MAVLINK_COMM_1, cp, &message, &status);
+		// }
 
 		// check for dropped packets
 		if ( (lastStatus.packet_rx_drop_count != status.packet_rx_drop_count) && debug )
 		{
 			printf("ERROR: DROPPED %d PACKETS\n", status.packet_rx_drop_count);
 			unsigned char v=cp;
-			fprintf(stderr,"%02x ", v);
+			fprintf(stderr,"%02x \n", v);
 		}
 		lastStatus = status;
 	}

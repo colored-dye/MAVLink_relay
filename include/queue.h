@@ -4,7 +4,7 @@
 #include <bits/stdint-uintn.h>
 #include <mavlink_types.h>
 
-#define MAX_QUEUE_SIZE 512
+#define MAX_QUEUE_SIZE 1024
 
 typedef struct queue_ {
     mavlink_message_t raw_queue[MAX_QUEUE_SIZE];

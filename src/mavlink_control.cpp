@@ -219,6 +219,8 @@ commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 					}
 				}
 
+				printf("[telem_send_queue] size: %u\n", autopilot_interface.telem_send_queue.message_queue.size);
+
 				autopilot_interface.telem_send_queue.sysid = autopilot_interface.uart_recv_queue.sysid;
 				autopilot_interface.telem_send_queue.compid = autopilot_interface.uart_recv_queue.compid;
 
@@ -251,6 +253,8 @@ commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 						break;
 					}
 				}
+
+				printf("[uart_send_queue] size: %u\n", autopilot_interface.uart_send_queue.message_queue.size);
 
 				autopilot_interface.uart_send_queue.sysid = autopilot_interface.telem_recv_queue.sysid;
 				autopilot_interface.uart_send_queue.compid = autopilot_interface.telem_recv_queue.compid;
