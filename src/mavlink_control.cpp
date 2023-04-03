@@ -59,6 +59,7 @@
 #include "serial_port.h"
 #include <bits/stdint-uintn.h>
 #include <cstdint>
+#include <cstdio>
 #include <mutex>
 #include <unistd.h>
 
@@ -185,7 +186,7 @@ void
 commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 {
 	while (!autopilot_interface.time_to_exit) {
-		while (!autopilot_interface.time_to_exit && !queue_empty(&autopilot_interface.uart_recv_queue.message_queue) && !queue_empty(&autopilot_interface.telem_recv_queue.message_queue)) {
+		while (!autopilot_interface.time_to_exit && queue_empty(&autopilot_interface.uart_recv_queue.message_queue) && queue_empty(&autopilot_interface.telem_recv_queue.message_queue)) {
 			
 		}
 		
@@ -203,14 +204,17 @@ commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 
 				if (copy_size + autopilot_interface.telem_send_queue.message_queue.size > MAX_QUEUE_SIZE) {
 					fprintf(stderr, "WARNING: telem_send_queue not enough!\n");
+					copy_size = MAX_QUEUE_SIZE - autopilot_interface.telem_send_queue.message_queue.size;
 				}
 
 				mavlink_message_t tmp;
 				for (uint32_t i = 0; i < copy_size; i++) {
 					if (dequeue(&autopilot_interface.uart_recv_queue.message_queue, &tmp)) {
+						fprintf(stderr, "Should not get here\n");
 						break;
 					}
 					if (enqueue(&autopilot_interface.telem_send_queue.message_queue, tmp)) {
+						fprintf(stderr, "Should not get here\n");
 						break;
 					}
 				}
@@ -233,14 +237,17 @@ commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 
 				if (copy_size + autopilot_interface.uart_send_queue.message_queue.size > MAX_QUEUE_SIZE) {
 					fprintf(stderr, "WARNING: uart_send_queue not enough!\n");
+					copy_size = MAX_QUEUE_SIZE - autopilot_interface.uart_send_queue.message_queue.size;
 				}
 
 				mavlink_message_t tmp;
 				for (uint32_t i = 0; i < copy_size; i++) {
 					if (dequeue(&autopilot_interface.telem_recv_queue.message_queue, &tmp)) {
+						fprintf(stderr, "Should not get here\n");
 						break;
 					}
 					if (enqueue(&autopilot_interface.uart_send_queue.message_queue, tmp)) {
+						fprintf(stderr, "Should not get here\n");
 						break;
 					}
 				}

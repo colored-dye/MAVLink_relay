@@ -2,3 +2,4 @@
 /mavlink/
 mavlink_control
 compile_commands.json
+*.o

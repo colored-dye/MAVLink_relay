@@ -461,7 +461,7 @@ telem_read_thread()
 	while ( ! time_to_exit )
 	{
 		telem_read_messages();
-		usleep(100000); // Read batches at 10Hz
+		// usleep(100000); // Read batches at 10Hz
 	}
 
 	telem_reading_status = false;
@@ -498,8 +498,9 @@ telem_write_thread(void)
 		int len = telem_write_message(msg);
 		if (len <= 0) {
 			fprintf(stderr, "WARNING: Could not send message to telem\n");
+		} else {
+			printf("Telem sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
 		}
-		printf("Telem sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
 
 		// signal end
 		telem_writing_status = 0;
@@ -550,15 +551,16 @@ uart_write_thread(void)
 		mavlink_message_t msg;
 		{
 			std::lock_guard<std::mutex> lock(uart_send_queue.mutex);
-			if (dequeue(&telem_send_queue.message_queue, &msg)) {
-				fprintf(stderr, "WARNING: telem_send_queue empty!\n");
+			if (dequeue(&uart_send_queue.message_queue, &msg)) {
+				fprintf(stderr, "WARNING: uart_send_queue empty!\n");
 			}
 		}
 		int len = uart_write_message(msg);
 		if (len <= 0) {
 			fprintf(stderr, "WARNING: Could not send message to uart\n");
+		} else {
+			printf("UART sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
 		}
-		printf("UART sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
 
 		uart_writing_status = false;
 
