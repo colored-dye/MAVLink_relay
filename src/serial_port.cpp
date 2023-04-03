@@ -162,7 +162,7 @@ read_message(mavlink_message_t &message)
 		// printf("Received message from serial with ID #%d (sys:%d|comp:%d):\n", message.msgid, message.sysid, message.compid);
 
 		// fprintf(stderr,"Received serial data: ");
-		unsigned int i;
+		// unsigned int i;
 		uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
 
 		// check message is write length
@@ -175,15 +175,15 @@ read_message(mavlink_message_t &message)
 		}
 
 		// print out the buffer
-		else
-		{
-			for (i=0; i<messageLength; i++)
-			{
-				unsigned char v=buffer[i];
-				fprintf(stderr,"%02x ", v);
-			}
-			fprintf(stderr,"\n");
-		}
+		// else
+		// {
+		// 	for (i=0; i<messageLength; i++)
+		// 	{
+		// 		unsigned char v=buffer[i];
+		// 		fprintf(stderr,"%02x ", v);
+		// 	}
+		// 	fprintf(stderr,"\n");
+		// }
 	}
 
 	// Done!

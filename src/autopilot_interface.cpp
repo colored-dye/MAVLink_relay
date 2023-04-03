@@ -128,7 +128,7 @@ telem_read_messages()
 			received_all = true;
 			telem_read_ready = true;
 
-			printf("Telem received message: MAGIC: %02X, SYSID: %d, COMPID: %d, SEQ: %d, MSGID: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
+			printf("Telem received message: [MAGIC]: %02X, [SYSID]: %d, [COMPID]: %d, [SEQ]: %d, [MSGID]: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
 		} // end: if read message
 
 		// give the write thread time to use the port
