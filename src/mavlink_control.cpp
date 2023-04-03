@@ -54,7 +54,11 @@
 // ------------------------------------------------------------------------------
 
 #include "mavlink_control.h"
+#include "mavlink_types.h"
+#include "queue.h"
 #include "serial_port.h"
+#include <bits/stdint-uintn.h>
+#include <cstdint>
 #include <mutex>
 #include <unistd.h>
 
@@ -181,7 +185,7 @@ void
 commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 {
 	while (!autopilot_interface.time_to_exit) {
-		while (!autopilot_interface.time_to_exit && !autopilot_interface.uart_read_ready && !autopilot_interface.telem_read_ready) {
+		while (!autopilot_interface.time_to_exit && !queue_empty(&autopilot_interface.uart_recv_queue.message_queue) && !queue_empty(&autopilot_interface.telem_recv_queue.message_queue)) {
 			
 		}
 		
@@ -189,37 +193,67 @@ commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 			break;
 		}
 
-		if (autopilot_interface.uart_read_ready) {
+		if (!queue_empty(&autopilot_interface.uart_recv_queue.message_queue)) {
 			printf("UART copy to Telem\n");
 			{
-				std::lock_guard<std::mutex> lock1(autopilot_interface.uart_recv_message.mutex);
-				std::lock_guard<std::mutex> lock2(autopilot_interface.telem_send_message.mutex);
+				std::lock_guard<std::mutex> lock1(autopilot_interface.uart_recv_queue.mutex);
+				std::lock_guard<std::mutex> lock2(autopilot_interface.telem_send_queue.mutex);
 
-				autopilot_interface.telem_send_message.mavlink_message = autopilot_interface.uart_recv_message.mavlink_message;
-				autopilot_interface.telem_send_message.sysid = autopilot_interface.uart_recv_message.sysid;
-				autopilot_interface.telem_send_message.compid = autopilot_interface.uart_recv_message.compid;
+				uint32_t copy_size = autopilot_interface.uart_recv_queue.message_queue.size;
+
+				if (copy_size + autopilot_interface.telem_send_queue.message_queue.size > MAX_QUEUE_SIZE) {
+					fprintf(stderr, "WARNING: telem_send_queue not enough!\n");
+				}
+
+				mavlink_message_t tmp;
+				for (uint32_t i = 0; i < copy_size; i++) {
+					if (dequeue(&autopilot_interface.uart_recv_queue.message_queue, &tmp)) {
+						break;
+					}
+					if (enqueue(&autopilot_interface.telem_send_queue.message_queue, tmp)) {
+						break;
+					}
+				}
+
+				autopilot_interface.telem_send_queue.sysid = autopilot_interface.uart_recv_queue.sysid;
+				autopilot_interface.telem_send_queue.compid = autopilot_interface.uart_recv_queue.compid;
 
 				autopilot_interface.telem_write_ready = true;
 				autopilot_interface.uart_read_ready = false;
 			}
 		}
 
-		if (autopilot_interface.telem_read_ready) {
+		if (!queue_empty(&autopilot_interface.telem_recv_queue.message_queue)) {
 			printf("Telem copy to UART\n");
 			{
-				std::lock_guard<std::mutex> lock1(autopilot_interface.telem_recv_message.mutex);
-				std::lock_guard<std::mutex> lock2(autopilot_interface.uart_send_message.mutex);
+				std::lock_guard<std::mutex> lock1(autopilot_interface.telem_recv_queue.mutex);
+				std::lock_guard<std::mutex> lock2(autopilot_interface.uart_send_queue.mutex);
 
-				autopilot_interface.uart_send_message.mavlink_message = autopilot_interface.telem_recv_message.mavlink_message;
-				autopilot_interface.uart_send_message.sysid = autopilot_interface.telem_recv_message.sysid;
-				autopilot_interface.uart_send_message.compid = autopilot_interface.telem_recv_message.compid;
+				uint32_t copy_size = autopilot_interface.telem_recv_queue.message_queue.size;
+
+				if (copy_size + autopilot_interface.uart_send_queue.message_queue.size > MAX_QUEUE_SIZE) {
+					fprintf(stderr, "WARNING: uart_send_queue not enough!\n");
+				}
+
+				mavlink_message_t tmp;
+				for (uint32_t i = 0; i < copy_size; i++) {
+					if (dequeue(&autopilot_interface.telem_recv_queue.message_queue, &tmp)) {
+						break;
+					}
+					if (enqueue(&autopilot_interface.uart_send_queue.message_queue, tmp)) {
+						break;
+					}
+				}
+
+				autopilot_interface.uart_send_queue.sysid = autopilot_interface.telem_recv_queue.sysid;
+				autopilot_interface.uart_send_queue.compid = autopilot_interface.telem_recv_queue.compid;
 
 				autopilot_interface.uart_write_ready = true;
 				autopilot_interface.telem_read_ready = false;
 			}
 		}
 
-		usleep(100000); // 10Hz
+		// usleep(100000); // 10Hz
 	}
 }
 

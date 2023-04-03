@@ -19,6 +19,8 @@
 #include "autopilot_interface.h"
 #include "generic_port.h"
 #include "mavlink_types.h"
+#include "queue.h"
+#include <cstdio>
 #include <mutex>
 #include <unistd.h>
 
@@ -72,17 +74,10 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 	autopilot_id = 0; // autopilot component id
 	companion_id = 0; // companion computer component id
 
-	telem_send_message.sysid  = system_id;
-	telem_send_message.compid = autopilot_id;
-
-	telem_recv_message.sysid  = system_id;
-	telem_recv_message.compid = autopilot_id;
-
-	uart_send_message.sysid  = system_id;
-	uart_send_message.compid = autopilot_id;
-
-	uart_recv_message.sysid  = system_id;
-	uart_recv_message.compid = autopilot_id;
+	queue_init(&telem_recv_queue.message_queue);
+	queue_init(&telem_send_queue.message_queue);
+	queue_init(&uart_recv_queue.message_queue);
+	queue_init(&uart_send_queue.message_queue);
 
 	telem_port = telem_port_; // port management object
 	uart_port = uart_port_;
@@ -120,10 +115,12 @@ telem_read_messages()
 			// Store message sysid and compid.
 			// Note this doesn't handle multiple message sources.
 			{
-				std::lock_guard<std::mutex> lock(telem_recv_message.mutex);
-				telem_recv_message.mavlink_message = message;
-				telem_recv_message.sysid  = message.sysid;
-				telem_recv_message.compid = message.compid;
+				std::lock_guard<std::mutex> lock(telem_recv_queue.mutex);
+				if (enqueue(&telem_recv_queue.message_queue, message)) {
+					fprintf(stderr, "WARNING: telem_recv_queue full!\n");
+				}
+				telem_recv_queue.sysid  = message.sysid;
+				telem_recv_queue.compid = message.compid;
 			}
 			received_all = true;
 			telem_read_ready = true;
@@ -166,10 +163,12 @@ uart_read_messages()
 			// Store message sysid and compid.
 			// Note this doesn't handle multiple message sources.
 			{
-				std::lock_guard<std::mutex> lock(uart_recv_message.mutex);
-				uart_recv_message.mavlink_message = message;
-				uart_recv_message.sysid  = message.sysid;
-				uart_recv_message.compid = message.compid;
+				std::lock_guard<std::mutex> lock(uart_recv_queue.mutex);
+				if (enqueue(&uart_recv_queue.message_queue, message)) {
+					fprintf(stderr, "WARNING: uart_recv_queue full!\n");
+				}
+				uart_recv_queue.sysid  = message.sysid;
+				uart_recv_queue.compid = message.compid;
 			}
 			received_all = true;
 			uart_read_ready = true;
@@ -259,7 +258,7 @@ start()
 
 	printf("CHECK FOR MESSAGES\n");
 
-	while ( ! telem_recv_message.sysid )
+	while ( ! telem_recv_queue.sysid )
 	{
 		if ( time_to_exit )
 			return;
@@ -284,14 +283,14 @@ start()
 	// System ID
 	if ( not system_id )
 	{
-		system_id = telem_recv_message.sysid;
+		system_id = telem_recv_queue.sysid;
 		printf("GOT VEHICLE SYSTEM ID: %i\n", system_id );
 	}
 
 	// Component ID
 	if ( not autopilot_id )
 	{
-		autopilot_id = telem_recv_message.compid;
+		autopilot_id = telem_recv_queue.compid;
 		printf("GOT AUTOPILOT COMPONENT ID: %i\n", autopilot_id);
 		printf("\n");
 	}
@@ -479,7 +478,7 @@ Autopilot_Interface::
 telem_write_thread(void)
 {
 	while (!time_to_exit) {
-		while (!time_to_exit && !telem_write_ready) {
+		while (!time_to_exit && queue_empty(&telem_send_queue.message_queue)) {
 
 		}
 		if (time_to_exit) {
@@ -491,19 +490,21 @@ telem_write_thread(void)
 
 		mavlink_message_t msg;
 		{
-			std::lock_guard<std::mutex> lock(telem_send_message.mutex);
-			msg = telem_send_message.mavlink_message;
+			std::lock_guard<std::mutex> lock(telem_send_queue.mutex);
+			if (dequeue(&telem_send_queue.message_queue, &msg)) {
+				fprintf(stderr, "WARNING: telem_send_queue empty!\n");
+			}
 		}
 		int len = telem_write_message(msg);
 		if (len <= 0) {
-			fprintf(stderr, "WARNING: Could not send message to telem");
+			fprintf(stderr, "WARNING: Could not send message to telem\n");
 		}
 		printf("Telem sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
 
 		// signal end
 		telem_writing_status = 0;
 
-		usleep(250000);	// 4Hz
+		// usleep(250000);	// 4Hz
 	}
 
 	return;
@@ -519,7 +520,7 @@ uart_read_thread()
 	while ( ! time_to_exit )
 	{
 		uart_read_messages();
-		usleep(100000); // Read batches at 10Hz
+		// usleep(100000); // Read batches at 10Hz
 	}
 
 	uart_reading_status = false;
@@ -536,7 +537,7 @@ Autopilot_Interface::
 uart_write_thread(void)
 {
 	while (!time_to_exit) {
-		while (!time_to_exit && !uart_write_ready) {
+		while (!time_to_exit && queue_empty(&uart_send_queue.message_queue)) {
 
 		}
 		if (time_to_exit) {
@@ -548,18 +549,20 @@ uart_write_thread(void)
 
 		mavlink_message_t msg;
 		{
-			std::lock_guard<std::mutex> lock(uart_send_message.mutex);
-			msg = uart_send_message.mavlink_message;
+			std::lock_guard<std::mutex> lock(uart_send_queue.mutex);
+			if (dequeue(&telem_send_queue.message_queue, &msg)) {
+				fprintf(stderr, "WARNING: telem_send_queue empty!\n");
+			}
 		}
 		int len = uart_write_message(msg);
 		if (len <= 0) {
-			fprintf(stderr, "WARNING: Could not send message to uart");
+			fprintf(stderr, "WARNING: Could not send message to uart\n");
 		}
 		printf("UART sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
 
 		uart_writing_status = false;
 
-		usleep(250000);	// 4Hz
+		// usleep(250000);	// 4Hz
 	}
 
 	return;

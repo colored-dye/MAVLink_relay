@@ -1,6 +1,6 @@
 all: mavlink_control
 
-mavlink_control: src/mavlink_control.cpp src/serial_port.cpp src/autopilot_interface.cpp
+mavlink_control: src/mavlink_control.cpp src/serial_port.cpp src/autopilot_interface.cpp src/queue.c
 	g++ -g -Wall -I mavlink/include/mavlink/v2.0 -I include -o $@ $^ -lpthread
 
 modules:

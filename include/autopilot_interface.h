@@ -21,6 +21,7 @@
 
 #include "generic_port.h"
 #include "mavlink_types.h"
+#include "queue.h"
 
 #include <signal.h>
 #include <time.h>
@@ -97,7 +98,7 @@ void* start_autopilot_interface_uart_read_thread(void *args);
 void* start_autopilot_interface_uart_write_thread(void *args);
 
 struct MAVLink_Message {
-	mavlink_message_t mavlink_message;
+	queue_t message_queue;
 	std::mutex mutex;
 	int sysid;
 	int compid;
@@ -149,10 +150,10 @@ public:
 	int autopilot_id;
 	int companion_id;
 
-	struct MAVLink_Message telem_send_message;
-	struct MAVLink_Message telem_recv_message;
-	struct MAVLink_Message uart_send_message;
-	struct MAVLink_Message uart_recv_message;
+	struct MAVLink_Message telem_send_queue;
+	struct MAVLink_Message telem_recv_queue;
+	struct MAVLink_Message uart_send_queue;
+	struct MAVLink_Message uart_recv_queue;
 
 	void telem_read_messages();
 	int  telem_write_message(mavlink_message_t message);
