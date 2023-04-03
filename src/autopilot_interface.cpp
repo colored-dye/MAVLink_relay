@@ -256,19 +256,19 @@ start()
 	//   CHECK FOR MESSAGES
 	// --------------------------------------------------------------------------
 
-	printf("CHECK FOR MESSAGES\n");
+	// printf("CHECK FOR MESSAGES\n");
 
-	while ( ! telem_recv_queue.sysid )
-	{
-		if ( time_to_exit )
-			return;
-		usleep(500000); // check at 2Hz
-	}
+	// while ( ! telem_recv_queue.sysid )
+	// {
+	// 	if ( time_to_exit )
+	// 		return;
+	// 	usleep(500000); // check at 2Hz
+	// }
 
-	printf("Found\n");
+	// printf("Found\n");
 
 	// now we know autopilot is sending messages
-	printf("\n");
+	// printf("\n");
 
 
 	// --------------------------------------------------------------------------
@@ -281,19 +281,19 @@ start()
 	// In which case set the id's manually.
 
 	// System ID
-	if ( not system_id )
-	{
-		system_id = telem_recv_queue.sysid;
-		printf("GOT VEHICLE SYSTEM ID: %i\n", system_id );
-	}
+	// if ( not system_id )
+	// {
+	// 	system_id = telem_recv_queue.sysid;
+	// 	printf("GOT VEHICLE SYSTEM ID: %i\n", system_id );
+	// }
 
 	// Component ID
-	if ( not autopilot_id )
-	{
-		autopilot_id = telem_recv_queue.compid;
-		printf("GOT AUTOPILOT COMPONENT ID: %i\n", autopilot_id);
-		printf("\n");
-	}
+	// if ( not autopilot_id )
+	// {
+	// 	autopilot_id = telem_recv_queue.compid;
+	// 	printf("GOT AUTOPILOT COMPONENT ID: %i\n", autopilot_id);
+	// 	printf("\n");
+	// }
 
 	// --------------------------------------------------------------------------
 	//   WRITE THREAD

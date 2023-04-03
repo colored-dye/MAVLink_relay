@@ -186,10 +186,6 @@ void
 commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 {
 	while (!autopilot_interface.time_to_exit) {
-		while (!autopilot_interface.time_to_exit && queue_empty(&autopilot_interface.uart_recv_queue.message_queue) && queue_empty(&autopilot_interface.telem_recv_queue.message_queue)) {
-			
-		}
-		
 		if (autopilot_interface.time_to_exit) {
 			break;
 		}
