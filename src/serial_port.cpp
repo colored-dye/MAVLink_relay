@@ -89,7 +89,7 @@ Serial_Port::
 initialize_defaults()
 {
 	// Initialize attributes
-	debug  = false;
+	debug  = true;
 	fd     = -1;
 	is_open = false;
 

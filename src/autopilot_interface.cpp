@@ -18,7 +18,9 @@
 
 #include "autopilot_interface.h"
 #include "generic_port.h"
+#include "mavlink_types.h"
 #include <mutex>
+#include <unistd.h>
 
 
 // ----------------------------------------------------------------------------------
@@ -49,9 +51,10 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 
 	telem_reading_status = 0;      // whether the read thread is running
 	telem_writing_status = 0;      // whether the write thread is running
+	telem_write_ready = false;
 	uart_reading_status = 0;      // whether the read thread is running
 	uart_writing_status = 0;      // whether the write thread is running
-	// control_status = 0;      // whether the autopilot is in offboard control mode
+	uart_write_ready = false;
 	time_to_exit   = false;  // flag to signal thread exit
 
 	telem_read_tid  = 0; // read thread id
@@ -64,11 +67,17 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 	autopilot_id = 0; // autopilot component id
 	companion_id = 0; // companion computer component id
 
-	telem_messages.sysid  = system_id;
-	telem_messages.compid = autopilot_id;
+	telem_send_message.sysid  = system_id;
+	telem_send_message.compid = autopilot_id;
 
-	uart_messages.sysid  = system_id;
-	uart_messages.compid = autopilot_id;
+	telem_recv_message.sysid  = system_id;
+	telem_recv_message.compid = autopilot_id;
+
+	uart_send_message.sysid  = system_id;
+	uart_send_message.compid = autopilot_id;
+
+	uart_recv_message.sysid  = system_id;
+	uart_recv_message.compid = autopilot_id;
 
 	telem_port = telem_port_; // port management object
 	uart_port = uart_port_;
@@ -105,13 +114,15 @@ telem_read_messages()
 		{
 			// Store message sysid and compid.
 			// Note this doesn't handle multiple message sources.
-			telem_messages.sysid  = message.sysid;
-			telem_messages.compid = message.compid;
 			{
-				std::lock_guard<std::mutex> lock(telem_messages.telem_mutex);
-				telem_messages.mavlink_message = message;
+				std::lock_guard<std::mutex> lock(telem_recv_message.mutex);
+				telem_recv_message.mavlink_message = message;
+				telem_recv_message.sysid  = message.sysid;
+				telem_recv_message.compid = message.compid;
 			}
 			received_all = true;
+
+			printf("Telem received message: MAGIC: %02X, SYSID: %d, COMPID: %d, SEQ: %d, MSGID: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
 		} // end: if read message
 
 		// give the write thread time to use the port
@@ -149,13 +160,15 @@ uart_read_messages()
 
 			// Store message sysid and compid.
 			// Note this doesn't handle multiple message sources.
-			uart_messages.sysid  = message.sysid;
-			uart_messages.compid = message.compid;
 			{
-				std::lock_guard<std::mutex> lock(uart_messages.uart_mutex);
-				uart_messages.mavlink_message = message;
+				std::lock_guard<std::mutex> lock(uart_recv_message.mutex);
+				uart_recv_message.mavlink_message = message;
+				uart_recv_message.sysid  = message.sysid;
+				uart_recv_message.compid = message.compid;
 			}
 			received_all = true;
+
+			printf("UART received message: MAGIC: %02X, SYSID: %d, COMPID: %d, SEQ: %d, MSGID: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
 		} // end: if read message
 
 		// give the write thread time to use the port
@@ -240,7 +253,7 @@ start()
 
 	printf("CHECK FOR MESSAGES\n");
 
-	while ( ! telem_messages.sysid )
+	while ( ! telem_recv_message.sysid )
 	{
 		if ( time_to_exit )
 			return;
@@ -265,14 +278,14 @@ start()
 	// System ID
 	if ( not system_id )
 	{
-		system_id = uart_messages.sysid;
+		system_id = telem_recv_message.sysid;
 		printf("GOT VEHICLE SYSTEM ID: %i\n", system_id );
 	}
 
 	// Component ID
 	if ( not autopilot_id )
 	{
-		autopilot_id = uart_messages.compid;
+		autopilot_id = telem_recv_message.compid;
 		printf("GOT AUTOPILOT COMPONENT ID: %i\n", autopilot_id);
 		printf("\n");
 	}
@@ -459,22 +472,29 @@ void
 Autopilot_Interface::
 telem_write_thread(void)
 {
-	// signal startup
-	telem_writing_status = 2;
+	while (1) {
+		while (!telem_write_ready) {
 
-	// write a message and signal writing
-	telem_writing_status = 1;
+		}
+		telem_write_ready = false;
 
-	// Pixhawk needs to see off-board commands at minimum 2Hz,
-	// otherwise it will go into fail safe
-	while ( !time_to_exit )
-	{
-		usleep(250000);   // Stream at 4Hz
-		// write_setpoint();
+		telem_writing_status = 1;
+
+		mavlink_message_t msg;
+		{
+			std::lock_guard<std::mutex> lock(telem_send_message.mutex);
+			msg = telem_send_message.mavlink_message;
+		}
+		int len = telem_write_message(msg);
+		if (len <= 0) {
+			fprintf(stderr, "WARNING: Could not send message to uart");
+		}
+
+		// signal end
+		telem_writing_status = 0;
+
+		usleep(250000);	// 4Hz
 	}
-
-	// signal end
-	telem_writing_status = 0;
 
 	return;
 
@@ -505,39 +525,28 @@ void
 Autopilot_Interface::
 uart_write_thread(void)
 {
-	// signal startup
-	uart_writing_status = 2;
+	while (1) {
+		while (!uart_write_ready) {
 
-	// prepare an initial setpoint, just stay put
-	mavlink_set_position_target_local_ned_t sp;
-	sp.type_mask = MAVLINK_MSG_SET_POSITION_TARGET_LOCAL_NED_VELOCITY &
-				   MAVLINK_MSG_SET_POSITION_TARGET_LOCAL_NED_YAW_RATE;
-	sp.coordinate_frame = MAV_FRAME_LOCAL_NED;
-	sp.vx       = 0.0;
-	sp.vy       = 0.0;
-	sp.vz       = 0.0;
-	sp.yaw_rate = 0.0;
+		}
+		uart_write_ready = false;
 
-	// set position target
-	// {
-	// 	std::lock_guard<std::mutex> lock(current_setpoint.mutex);
-	// 	current_setpoint.data = sp;
-	// }
+		uart_writing_status = true;
 
-	// write a message and signal writing
-	// write_setpoint();
-	uart_writing_status = true;
+		mavlink_message_t msg;
+		{
+			std::lock_guard<std::mutex> lock(uart_send_message.mutex);
+			msg = uart_send_message.mavlink_message;
+		}
+		int len = uart_write_message(msg);
+		if (len <= 0) {
+			fprintf(stderr, "WARNING: Could not send message to uart");
+		}
 
-	// Pixhawk needs to see off-board commands at minimum 2Hz,
-	// otherwise it will go into fail safe
-	while ( !time_to_exit )
-	{
-		usleep(250000);   // Stream at 4Hz
-		// write_setpoint();
+		uart_writing_status = false;
+
+		usleep(250000);	// 4Hz
 	}
-
-	// signal end
-	uart_writing_status = false;
 
 	return;
 

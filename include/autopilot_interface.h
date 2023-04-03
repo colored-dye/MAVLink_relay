@@ -96,6 +96,12 @@ void* start_autopilot_interface_telem_write_thread(void *args);
 void* start_autopilot_interface_uart_read_thread(void *args);
 void* start_autopilot_interface_uart_write_thread(void *args);
 
+struct MAVLink_Message {
+	mavlink_message_t mavlink_message;
+	std::mutex mutex;
+	int sysid;
+	int compid;
+};
 
 // ----------------------------------------------------------------------------------
 //   Autopilot Interface Class
@@ -126,27 +132,21 @@ public:
 	char telem_reading_status;
 	char telem_writing_status;
 	uint64_t telem_write_count;
+	bool telem_write_ready;
 
 	char uart_reading_status;
 	char uart_writing_status;
 	uint64_t uart_write_count;
+	bool uart_write_ready;
 
     int system_id;
 	int autopilot_id;
 	int companion_id;
 
-	struct {
-		mavlink_message_t mavlink_message;
-		std::mutex telem_mutex;
-		int sysid;
-		int compid;
-	} telem_messages;
-	struct {
-		mavlink_message_t mavlink_message;
-		std::mutex uart_mutex;
-		int sysid;
-		int compid;
-	} uart_messages;
+	struct MAVLink_Message telem_send_message;
+	struct MAVLink_Message telem_recv_message;
+	struct MAVLink_Message uart_send_message;
+	struct MAVLink_Message uart_recv_message;
 
 	void telem_read_messages();
 	int  telem_write_message(mavlink_message_t message);

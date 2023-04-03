@@ -55,6 +55,7 @@
 
 #include "mavlink_control.h"
 #include "serial_port.h"
+#include <mutex>
 #include <unistd.h>
 
 
@@ -180,25 +181,32 @@ void
 commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 {
 	while (1) {
-		int len;
-		if (!autopilot_interface.uart_reading_status) {
-			while (autopilot_interface.telem_writing_status) {
+		while (autopilot_interface.uart_writing_status) {
+			
+		}
+		{
+			std::lock_guard<std::mutex> lock1(autopilot_interface.uart_recv_message.mutex);
+			std::lock_guard<std::mutex> lock2(autopilot_interface.telem_send_message.mutex);
 
-			}
-			len = autopilot_interface.telem_write_message(autopilot_interface.uart_messages.mavlink_message);
-			if (len <= 0) {
-				fprintf(stderr, "Could not send to telemetry");
-			}
+			autopilot_interface.telem_send_message.mavlink_message = autopilot_interface.uart_recv_message.mavlink_message;
+			autopilot_interface.telem_send_message.sysid = autopilot_interface.uart_recv_message.sysid;
+			autopilot_interface.telem_send_message.compid = autopilot_interface.uart_recv_message.compid;
+
+			autopilot_interface.telem_write_ready = true;
 		}
 
-		if (!autopilot_interface.telem_reading_status) {
-			while (autopilot_interface.uart_writing_status) {
+		while (autopilot_interface.telem_writing_status) {
+			
+		}
+		{
+			std::lock_guard<std::mutex> lock1(autopilot_interface.telem_recv_message.mutex);
+			std::lock_guard<std::mutex> lock2(autopilot_interface.uart_send_message.mutex);
 
-			}
-			len = autopilot_interface.uart_write_message(autopilot_interface.telem_messages.mavlink_message);
-			if (len <= 0) {
-				fprintf(stderr, "Could not send to uart");
-			}
+			autopilot_interface.uart_send_message.mavlink_message = autopilot_interface.telem_recv_message.mavlink_message;
+			autopilot_interface.uart_send_message.sysid = autopilot_interface.telem_recv_message.sysid;
+			autopilot_interface.uart_send_message.compid = autopilot_interface.telem_recv_message.compid;
+
+			autopilot_interface.uart_write_ready = true;
 		}
 
 		usleep(100000); // 10Hz
