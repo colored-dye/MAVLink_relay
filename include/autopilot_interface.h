@@ -129,12 +129,18 @@ public:
 	Autopilot_Interface(Generic_Port *telem, Generic_Port *uart);
 	~Autopilot_Interface();
 
+	bool time_to_exit;
+
 	char telem_reading_status;
+	bool telem_read_ready;
+
 	char telem_writing_status;
 	uint64_t telem_write_count;
 	bool telem_write_ready;
 
 	char uart_reading_status;
+	bool uart_read_ready;
+
 	char uart_writing_status;
 	uint64_t uart_write_count;
 	bool uart_write_ready;
@@ -170,8 +176,6 @@ private:
 
 	Generic_Port *telem_port;
 	Generic_Port *uart_port;
-
-	bool time_to_exit;
 
 	pthread_t telem_read_tid;
 	pthread_t telem_write_tid;

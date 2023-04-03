@@ -180,10 +180,14 @@ top (int argc, char **argv)
 void
 commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 {
-	while (1) {
-		while (autopilot_interface.uart_writing_status) {
+	while (!autopilot_interface.time_to_exit) {
+		while (!autopilot_interface.time_to_exit && !autopilot_interface.uart_read_ready) {
 			
 		}
+		if (autopilot_interface.time_to_exit) {
+			break;
+		}
+		printf("UART copy to Telem\n");
 		{
 			std::lock_guard<std::mutex> lock1(autopilot_interface.uart_recv_message.mutex);
 			std::lock_guard<std::mutex> lock2(autopilot_interface.telem_send_message.mutex);
@@ -193,11 +197,16 @@ commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 			autopilot_interface.telem_send_message.compid = autopilot_interface.uart_recv_message.compid;
 
 			autopilot_interface.telem_write_ready = true;
+			autopilot_interface.uart_read_ready = false;
 		}
 
-		while (autopilot_interface.telem_writing_status) {
+		while (!autopilot_interface.time_to_exit && !autopilot_interface.telem_read_ready) {
 			
 		}
+		if (autopilot_interface.time_to_exit) {
+			break;
+		}
+		printf("Telem copy to UART\n");
 		{
 			std::lock_guard<std::mutex> lock1(autopilot_interface.telem_recv_message.mutex);
 			std::lock_guard<std::mutex> lock2(autopilot_interface.uart_send_message.mutex);
@@ -207,6 +216,7 @@ commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 			autopilot_interface.uart_send_message.compid = autopilot_interface.telem_recv_message.compid;
 
 			autopilot_interface.uart_write_ready = true;
+			autopilot_interface.telem_read_ready = false;
 		}
 
 		usleep(100000); // 10Hz

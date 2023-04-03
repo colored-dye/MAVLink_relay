@@ -50,9 +50,14 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 	uart_write_count = 0;
 
 	telem_reading_status = 0;      // whether the read thread is running
+	telem_read_ready = false;
+
 	telem_writing_status = 0;      // whether the write thread is running
 	telem_write_ready = false;
+
 	uart_reading_status = 0;      // whether the read thread is running
+	uart_read_ready = false;
+
 	uart_writing_status = 0;      // whether the write thread is running
 	uart_write_ready = false;
 	time_to_exit   = false;  // flag to signal thread exit
@@ -121,6 +126,7 @@ telem_read_messages()
 				telem_recv_message.compid = message.compid;
 			}
 			received_all = true;
+			telem_read_ready = true;
 
 			printf("Telem received message: MAGIC: %02X, SYSID: %d, COMPID: %d, SEQ: %d, MSGID: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
 		} // end: if read message
@@ -157,7 +163,6 @@ uart_read_messages()
 		// ----------------------------------------------------------------------
 		if( success )
 		{
-
 			// Store message sysid and compid.
 			// Note this doesn't handle multiple message sources.
 			{
@@ -167,8 +172,9 @@ uart_read_messages()
 				uart_recv_message.compid = message.compid;
 			}
 			received_all = true;
+			uart_read_ready = true;
 
-			printf("UART received message: MAGIC: %02X, SYSID: %d, COMPID: %d, SEQ: %d, MSGID: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
+			printf("UART received message: [MAGIC]: %02X, [SYSID]: %d, [COMPID]: %d, [SEQ]: %d, [MSGID]: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
 		} // end: if read message
 
 		// give the write thread time to use the port
@@ -472,9 +478,12 @@ void
 Autopilot_Interface::
 telem_write_thread(void)
 {
-	while (1) {
-		while (!telem_write_ready) {
+	while (!time_to_exit) {
+		while (!time_to_exit && !telem_write_ready) {
 
+		}
+		if (time_to_exit) {
+			return;
 		}
 		telem_write_ready = false;
 
@@ -487,8 +496,9 @@ telem_write_thread(void)
 		}
 		int len = telem_write_message(msg);
 		if (len <= 0) {
-			fprintf(stderr, "WARNING: Could not send message to uart");
+			fprintf(stderr, "WARNING: Could not send message to telem");
 		}
+		printf("Telem sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
 
 		// signal end
 		telem_writing_status = 0;
@@ -525,9 +535,12 @@ void
 Autopilot_Interface::
 uart_write_thread(void)
 {
-	while (1) {
-		while (!uart_write_ready) {
+	while (!time_to_exit) {
+		while (!time_to_exit && !uart_write_ready) {
 
+		}
+		if (time_to_exit) {
+			return;
 		}
 		uart_write_ready = false;
 
@@ -542,6 +555,7 @@ uart_write_thread(void)
 		if (len <= 0) {
 			fprintf(stderr, "WARNING: Could not send message to uart");
 		}
+		printf("UART sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
 
 		uart_writing_status = false;
 

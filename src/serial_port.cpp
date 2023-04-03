@@ -159,9 +159,9 @@ read_message(mavlink_message_t &message)
 	if(msgReceived && debug)
 	{
 		// Report info
-		printf("Received message from serial with ID #%d (sys:%d|comp:%d):\n", message.msgid, message.sysid, message.compid);
+		// printf("Received message from serial with ID #%d (sys:%d|comp:%d):\n", message.msgid, message.sysid, message.compid);
 
-		fprintf(stderr,"Received serial data: ");
+		// fprintf(stderr,"Received serial data: ");
 		unsigned int i;
 		uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
 
