@@ -85,6 +85,11 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 	sem_init(&uart_recv_queue.sem, 0, 0);
 	sem_init(&uart_send_queue.sem, 0, 0);
 
+	sem_post(&telem_recv_queue.sem);
+	sem_post(&telem_send_queue.sem);
+	sem_post(&uart_recv_queue.sem);
+	sem_post(&uart_send_queue.sem);
+
 	telem_port = telem_port_; // port management object
 	uart_port = uart_port_;
 
@@ -488,12 +493,14 @@ Autopilot_Interface::
 telem_write_thread(void)
 {
 	while (!time_to_exit) {
-		while (!time_to_exit && queue_empty(&telem_send_queue.message_queue)) {
-
-		}
 		if (time_to_exit) {
-			return;
+			break;
 		}
+
+		if (queue_empty(&telem_send_queue.message_queue)) {
+			continue;
+		}
+
 		telem_write_ready = false;
 
 		telem_writing_status = 1;
@@ -512,13 +519,13 @@ telem_write_thread(void)
 		if (len <= 0) {
 			fprintf(stderr, "WARNING: Could not send message to telem\n");
 		} else {
-			printf("Telem sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
+			printf("Telem sent message: [SEQ]: %d, [SYSID]: %d, [COMPID]: %d, [MSGID]: %d\n", msg.seq, msg.sysid, msg.compid, msg.msgid);
 		}
 
 		// signal end
 		telem_writing_status = 0;
 
-		// usleep(250000);	// 4Hz
+		usleep(100000);	// 10Hz
 	}
 
 	return;
@@ -551,12 +558,14 @@ Autopilot_Interface::
 uart_write_thread(void)
 {
 	while (!time_to_exit) {
-		while (!time_to_exit && queue_empty(&uart_send_queue.message_queue)) {
-
-		}
 		if (time_to_exit) {
-			return;
+			break;
 		}
+
+		if (queue_empty(&uart_send_queue.message_queue)) {
+			continue;
+		}
+
 		uart_write_ready = false;
 
 		uart_writing_status = true;
@@ -574,12 +583,12 @@ uart_write_thread(void)
 		if (len <= 0) {
 			fprintf(stderr, "WARNING: Could not send message to uart\n");
 		} else {
-			printf("UART sent message: [SEQ]: %d, [MSGID]: %d\n", msg.seq, msg.msgid);
+			printf("UART sent message: [SEQ]: %d, [SYSID]: %d, [COMPID]: %d, [MSGID]: %d\n", msg.seq, msg.sysid, msg.compid, msg.msgid);
 		}
 
 		uart_writing_status = false;
 
-		// usleep(250000);	// 4Hz
+		usleep(100000);	// 10Hz
 	}
 
 	return;
