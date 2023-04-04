@@ -22,6 +22,7 @@
 #include "queue.h"
 #include <cstdio>
 #include <mutex>
+#include <semaphore.h>
 #include <unistd.h>
 
 
@@ -79,6 +80,11 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 	queue_init(&uart_recv_queue.message_queue);
 	queue_init(&uart_send_queue.message_queue);
 
+	sem_init(&telem_recv_queue.sem, 0, 0);
+	sem_init(&telem_send_queue.sem, 0, 0);
+	sem_init(&uart_recv_queue.sem, 0, 0);
+	sem_init(&uart_send_queue.sem, 0, 0);
+
 	telem_port = telem_port_; // port management object
 	uart_port = uart_port_;
 
@@ -115,12 +121,14 @@ telem_read_messages()
 			// Store message sysid and compid.
 			// Note this doesn't handle multiple message sources.
 			{
-				std::lock_guard<std::mutex> lock(telem_recv_queue.mutex);
+				// std::lock_guard<std::mutex> lock(telem_recv_queue.mutex);
+				sem_wait(&telem_recv_queue.sem);
 				if (enqueue(&telem_recv_queue.message_queue, message)) {
 					fprintf(stderr, "WARNING: telem_recv_queue full!\n");
 				}
 				telem_recv_queue.sysid  = message.sysid;
 				telem_recv_queue.compid = message.compid;
+				sem_post(&telem_recv_queue.sem);
 			}
 			received_all = true;
 			telem_read_ready = true;
@@ -163,12 +171,14 @@ uart_read_messages()
 			// Store message sysid and compid.
 			// Note this doesn't handle multiple message sources.
 			{
-				std::lock_guard<std::mutex> lock(uart_recv_queue.mutex);
+				// std::lock_guard<std::mutex> lock(uart_recv_queue.mutex);
+				sem_wait(&uart_recv_queue.sem);
 				if (enqueue(&uart_recv_queue.message_queue, message)) {
 					fprintf(stderr, "WARNING: uart_recv_queue full!\n");
 				}
 				uart_recv_queue.sysid  = message.sysid;
 				uart_recv_queue.compid = message.compid;
+				sem_post(&uart_recv_queue.sem);
 			}
 			received_all = true;
 			uart_read_ready = true;
@@ -490,10 +500,13 @@ telem_write_thread(void)
 
 		mavlink_message_t msg;
 		{
-			std::lock_guard<std::mutex> lock(telem_send_queue.mutex);
+			// std::lock_guard<std::mutex> lock(telem_send_queue.mutex);
+			sem_wait(&telem_send_queue.sem);
+			printf("telem_write_thread obtains lock\n");
 			if (dequeue(&telem_send_queue.message_queue, &msg)) {
 				fprintf(stderr, "WARNING: telem_send_queue empty!\n");
 			}
+			sem_post(&telem_send_queue.sem);
 		}
 		int len = telem_write_message(msg);
 		if (len <= 0) {
@@ -550,10 +563,12 @@ uart_write_thread(void)
 
 		mavlink_message_t msg;
 		{
-			std::lock_guard<std::mutex> lock(uart_send_queue.mutex);
+			// std::lock_guard<std::mutex> lock(uart_send_queue.mutex);
+			sem_wait(&uart_send_queue.sem);
 			if (dequeue(&uart_send_queue.message_queue, &msg)) {
 				fprintf(stderr, "WARNING: uart_send_queue empty!\n");
 			}
+			sem_post(&uart_send_queue.sem);
 		}
 		int len = uart_write_message(msg);
 		if (len <= 0) {

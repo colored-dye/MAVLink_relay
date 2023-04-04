@@ -29,6 +29,7 @@
 #include <pthread.h> // This uses POSIX Threads
 #include <unistd.h>  // UNIX standard function definitions
 #include <mutex>
+#include <semaphore.h>
 
 #include <common/mavlink.h>
 
@@ -99,7 +100,8 @@ void* start_autopilot_interface_uart_write_thread(void *args);
 
 struct MAVLink_Message {
 	queue_t message_queue;
-	std::mutex mutex;
+	// std::mutex mutex;
+	sem_t sem;
 	int sysid;
 	int compid;
 };

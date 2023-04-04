@@ -53,6 +53,7 @@
 // ------------------------------------------------------------------------------
 
 #include "serial_port.h"
+#include "mavlink_types.h"
 #include <bits/stdint-uintn.h>
 #include <cstdio>
 
@@ -109,6 +110,25 @@ initialize_defaults()
 	}
 }
 
+static mavlink_message_t g_mavlink_message_rx_buffer[2];
+static mavlink_status_t g_mavlink_status[2];
+
+uint8_t my_mavlink_parse_char(uint8_t chan,
+						   uint8_t c,
+						   mavlink_message_t *r_message,
+						   mavlink_status_t *r_mavlink_status)
+{
+	uint8_t msg_received = mavlink_frame_char_buffer(&g_mavlink_message_rx_buffer[chan],
+								&g_mavlink_status[chan],
+								c,
+								r_message,
+								r_mavlink_status);
+	if (msg_received == MAVLINK_FRAMING_BAD_CRC || msg_received == MAVLINK_FRAMING_BAD_SIGNATURE) {
+		printf("MAVLink message parse error: Bad CRC\n");
+	}
+	
+	return msg_received;
+}
 
 // ------------------------------------------------------------------------------
 //   Read from Serial
@@ -137,17 +157,18 @@ read_message(mavlink_message_t &message)
 	{
 		// the parsing
 		if (port_comm == 0) {
-			msgReceived = mavlink_parse_char(MAVLINK_COMM_0, cp, &message, &status);
+			msgReceived = my_mavlink_parse_char(MAVLINK_COMM_0, cp, &message, &status);
 		} else if (port_comm == 1) {
-			msgReceived = mavlink_parse_char(MAVLINK_COMM_1, cp, &message, &status);
+			msgReceived = my_mavlink_parse_char(MAVLINK_COMM_1, cp, &message, &status);
 		}
 
+
 		// check for dropped packets
-		if ( (lastStatus.packet_rx_drop_count != status.packet_rx_drop_count) && debug )
+		if ( status.packet_rx_drop_count && debug )
 		{
 			printf("ERROR: port [%d] DROPPED %d PACKETS\n", port_comm, status.packet_rx_drop_count);
 			unsigned char v=cp;
-			fprintf(stderr,"%02x \n", v);
+			fprintf(stderr,"Byte gone wrong: %02x \n", v);
 
 			fprintf(stderr, "\nMavlink state:\n");
 			fprintf(stderr, "buffer_overrun: %d\n", status.buffer_overrun);
@@ -158,7 +179,7 @@ read_message(mavlink_message_t &message)
 			fprintf(stderr, "packet_rx_drop_count: %d\n", status.packet_rx_drop_count);
 			fprintf(stderr, "flags: %d\n\n", status.flags);
 
-			fprintf(stderr, "\nBuffer(%u):\n", buffer_index);
+			fprintf(stderr, "\nBuffer(%d|%u):\n", port_comm, buffer_index);
 			for (uint32_t i=0; i < buffer_index; i++) {
 				fprintf(stderr, "%02X ", buffer[i]);
 			}
