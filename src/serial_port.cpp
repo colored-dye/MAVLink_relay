@@ -57,6 +57,16 @@
 #include <bits/stdint-uintn.h>
 #include <cstdio>
 
+#define print_mavlink_status(status) do { \
+	printf("\n    Mavlink status:\n"); \
+	printf("    buffer_overrun: %d\n", status.buffer_overrun); \
+	printf("    packet_idx: %d\n", status.packet_idx); \
+	printf("    current_rx_seq: %d\n", status.current_rx_seq); \
+	printf("    current_tx_seq: %d\n", status.current_tx_seq); \
+	printf("    packet_rx_success_count: %d\n", status.packet_rx_success_count); \
+	printf("    packet_rx_drop_count: %d\n", status.packet_rx_drop_count); \
+	printf("    flags: %d\n\n", status.flags); \
+} while (0)
 
 // ----------------------------------------------------------------------------------
 //   Serial Port Manager Class
@@ -166,24 +176,18 @@ read_message(mavlink_message_t &message)
 		// check for dropped packets
 		if ( status.packet_rx_drop_count && debug )
 		{
-			printf("ERROR: port [%d] DROPPED %d PACKETS\n", port_comm, status.packet_rx_drop_count);
+			printf("ERROR: PORT [%d] DROPPED %d PACKETS\n", port_comm, status.packet_rx_drop_count);
 			unsigned char v=cp;
-			fprintf(stderr,"Byte gone wrong: %02x \n", v);
+			printf("Byte gone wrong: %02x \n", v);
 
-			fprintf(stderr, "\nMavlink state:\n");
-			fprintf(stderr, "buffer_overrun: %d\n", status.buffer_overrun);
-			fprintf(stderr, "packet_idx: %d\n", status.packet_idx);
-			fprintf(stderr, "current_rx_seq: %d\n", status.current_rx_seq);
-			fprintf(stderr, "current_tx_seq: %d\n", status.current_tx_seq);
-			fprintf(stderr, "packet_rx_success_count: %d\n", status.packet_rx_success_count);
-			fprintf(stderr, "packet_rx_drop_count: %d\n", status.packet_rx_drop_count);
-			fprintf(stderr, "flags: %d\n\n", status.flags);
+			print_mavlink_status(status);
 
-			fprintf(stderr, "\nBuffer(%d|%u):\n", port_comm, buffer_index);
+			// Port ID | Buffer size
+			printf("\nBuffer(%d|%u):\n", port_comm, buffer_index);
 			for (uint32_t i=0; i < buffer_index; i++) {
-				fprintf(stderr, "%02X ", buffer[i]);
+				printf("%02X ", buffer[i]);
 			}
-			fprintf(stderr, "\n");
+			printf("\n");
 
 			buffer_index = 0;
 		}
@@ -193,7 +197,7 @@ read_message(mavlink_message_t &message)
 	// Couldn't read from port
 	else
 	{
-		fprintf(stderr, "ERROR: Could not read from fd %d\n", fd);
+		printf("ERROR: Could not read from fd %d\n", fd);
 	}
 
 	// --------------------------------------------------------------------------
@@ -205,7 +209,7 @@ read_message(mavlink_message_t &message)
 		// Report info
 		// printf("Received message from serial with ID #%d (sys:%d|comp:%d):\n", message.msgid, message.sysid, message.compid);
 
-		// fprintf(stderr,"Received serial data: ");
+		// printf(Received serial data: ");
 		// unsigned int i;
 		uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
 
@@ -215,7 +219,7 @@ read_message(mavlink_message_t &message)
 		// message length error
 		if (messageLength > MAVLINK_MAX_PACKET_LEN)
 		{
-			fprintf(stderr, "\nFATAL ERROR: MESSAGE LENGTH IS LARGER THAN BUFFER SIZE\n");
+			printf("\nFATAL ERROR: MESSAGE LENGTH IS LARGER THAN BUFFER SIZE\n");
 		}
 
 		// print out the buffer
@@ -224,9 +228,9 @@ read_message(mavlink_message_t &message)
 		// 	for (i=0; i<messageLength; i++)
 		// 	{
 		// 		unsigned char v=buffer[i];
-		// 		fprintf(stderr,"%02x ", v);
+		// 		printf(%02x ", v);
 		// 	}
-		// 	fprintf(stderr,"\n");
+		// 	printf(\n");
 		// }
 	}
 
@@ -325,7 +329,7 @@ stop()
 
 	if ( result )
 	{
-		fprintf(stderr,"WARNING: Error on port close (%i)\n", result );
+		printf("WARNING: Error on port close (%i)\n", result );
 	}
 
 	is_open = false;
@@ -375,7 +379,7 @@ _setup_port(int baud, int data_bits, int stop_bits, bool parity, bool hardware_c
 	// Check file descriptor
 	if(!isatty(fd))
 	{
-		fprintf(stderr, "\nERROR: file descriptor %d is NOT a serial port\n", fd);
+		printf("\nERROR: file descriptor %d is NOT a serial port\n", fd);
 		return false;
 	}
 
@@ -383,7 +387,7 @@ _setup_port(int baud, int data_bits, int stop_bits, bool parity, bool hardware_c
 	struct termios  config;
 	if(tcgetattr(fd, &config) < 0)
 	{
-		fprintf(stderr, "\nERROR: could not read configuration of fd %d\n", fd);
+		printf("\nERROR: could not read configuration of fd %d\n", fd);
 		return false;
 	}
 
@@ -437,7 +441,7 @@ _setup_port(int baud, int data_bits, int stop_bits, bool parity, bool hardware_c
 		case 1200:
 			if (cfsetispeed(&config, B1200) < 0 || cfsetospeed(&config, B1200) < 0)
 			{
-				fprintf(stderr, "\nERROR: Could not set desired baud rate of %d Baud\n", baud);
+				printf("\nERROR: Could not set desired baud rate of %d Baud\n", baud);
 				return false;
 			}
 			break;
@@ -456,21 +460,21 @@ _setup_port(int baud, int data_bits, int stop_bits, bool parity, bool hardware_c
 		case 38400:
 			if (cfsetispeed(&config, B38400) < 0 || cfsetospeed(&config, B38400) < 0)
 			{
-				fprintf(stderr, "\nERROR: Could not set desired baud rate of %d Baud\n", baud);
+				printf("\nERROR: Could not set desired baud rate of %d Baud\n", baud);
 				return false;
 			}
 			break;
 		case 57600:
 			if (cfsetispeed(&config, B57600) < 0 || cfsetospeed(&config, B57600) < 0)
 			{
-				fprintf(stderr, "\nERROR: Could not set desired baud rate of %d Baud\n", baud);
+				printf("\nERROR: Could not set desired baud rate of %d Baud\n", baud);
 				return false;
 			}
 			break;
 		case 115200:
 			if (cfsetispeed(&config, B115200) < 0 || cfsetospeed(&config, B115200) < 0)
 			{
-				fprintf(stderr, "\nERROR: Could not set desired baud rate of %d Baud\n", baud);
+				printf("\nERROR: Could not set desired baud rate of %d Baud\n", baud);
 				return false;
 			}
 			break;
@@ -480,19 +484,19 @@ _setup_port(int baud, int data_bits, int stop_bits, bool parity, bool hardware_c
 		case 460800:
 			if (cfsetispeed(&config, B460800) < 0 || cfsetospeed(&config, B460800) < 0)
 			{
-				fprintf(stderr, "\nERROR: Could not set desired baud rate of %d Baud\n", baud);
+				printf("\nERROR: Could not set desired baud rate of %d Baud\n", baud);
 				return false;
 			}
 			break;
 		case 921600:
 			if (cfsetispeed(&config, B921600) < 0 || cfsetospeed(&config, B921600) < 0)
 			{
-				fprintf(stderr, "\nERROR: Could not set desired baud rate of %d Baud\n", baud);
+				printf("\nERROR: Could not set desired baud rate of %d Baud\n", baud);
 				return false;
 			}
 			break;
 		default:
-			fprintf(stderr, "ERROR: Desired baud rate %d could not be set, aborting.\n", baud);
+			printf("ERROR: Desired baud rate %d could not be set, aborting.\n", baud);
 			return false;
 
 			break;
@@ -501,7 +505,7 @@ _setup_port(int baud, int data_bits, int stop_bits, bool parity, bool hardware_c
 	// Finally, apply the configuration
 	if(tcsetattr(fd, TCSAFLUSH, &config) < 0)
 	{
-		fprintf(stderr, "\nERROR: could not set configuration of fd %d\n", fd);
+		printf("\nERROR: could not set configuration of fd %d\n", fd);
 		return false;
 	}
 

@@ -21,7 +21,7 @@ int queue_empty(queue_t *q) {
 int enqueue(queue_t *q, mavlink_message_t msg) {
     int ret = 0;
     if (queue_full(q)) {
-        fprintf(stderr, "Cannot enqueue\n");
+        printf("Cannot enqueue\n");
         ret = -1;
     } else {
         uint32_t index = (q->head + q->size) % MAX_QUEUE_SIZE;
@@ -35,7 +35,7 @@ int dequeue(queue_t *q, mavlink_message_t *msg) {
     int ret = 0;
 
     if (queue_empty(q)) {
-        fprintf(stderr, "Cannot dequeue\n");
+        printf("Cannot dequeue\n");
         ret = -1;
     } else {
         *msg = q->raw_queue[q->head];

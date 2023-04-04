@@ -20,8 +20,10 @@
 #include "generic_port.h"
 #include "mavlink_types.h"
 #include "queue.h"
+#include <bits/stdint-uintn.h>
 #include <cstdio>
 #include <mutex>
+#include <pthread.h>
 #include <semaphore.h>
 #include <unistd.h>
 
@@ -52,18 +54,15 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 	telem_write_count = 0;
 	uart_write_count = 0;
 
-	telem_reading_status = 0;      // whether the read thread is running
-	telem_read_ready = false;
+	sem_init(&telem_read_ready, 0, 0);
+	sem_init(&telem_write_ready, 0, 0);
+	sem_init(&uart_read_ready, 0, 0);
+	sem_init(&uart_write_ready, 0, 0);
 
-	telem_writing_status = 0;      // whether the write thread is running
-	telem_write_ready = false;
-
-	uart_reading_status = 0;      // whether the read thread is running
-	uart_read_ready = false;
-
-	uart_writing_status = 0;      // whether the write thread is running
-	uart_write_ready = false;
-	time_to_exit   = false;  // flag to signal thread exit
+	// sem_post(&telem_read_ready);
+	// sem_post(&telem_write_ready);
+	// sem_post(&uart_read_ready);
+	// sem_post(&uart_write_ready);
 
 	telem_read_tid  = 0; // read thread id
 	telem_write_tid = 0; // write thread id
@@ -107,10 +106,10 @@ Autopilot_Interface::
 telem_read_messages()
 {
 	bool success;               // receive success flag
-	bool received_all = false;  // receive only one message
+	bool received_msg = false;  // receive only one message
 
 	// Blocking wait for new data
-	while ( !received_all and !time_to_exit )
+	while ( !received_msg and !time_to_exit )
 	{
 		// ----------------------------------------------------------------------
 		//   READ MESSAGE
@@ -135,17 +134,13 @@ telem_read_messages()
 				telem_recv_queue.compid = message.compid;
 				sem_post(&telem_recv_queue.sem);
 			}
-			received_all = true;
-			telem_read_ready = true;
+			received_msg = true;
 
 			printf("Telem received message: [MAGIC]: 0x%02X, [SYSID]: %d, [COMPID]: %d, [SEQ]: %d, [MSGID]: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
+
+			// Tell decrypt that data is ready
+			sem_post(&telem_read_ready);			
 		} // end: if read message
-
-		// give the write thread time to use the port
-		if ( telem_writing_status > 0 ) {
-			usleep(100); // look for components of batches at 10kHz
-		}
-
 	} // end: while not received all
 
 	return;
@@ -156,11 +151,11 @@ Autopilot_Interface::
 uart_read_messages()
 {
 	bool success;               // receive success flag
-	bool received_all = false;  // receive only one message
+	bool received_msg = false;  // receive only one message
 	// Time_Stamps this_timestamps;
 
 	// Blocking wait for new data
-	while ( !received_all and !time_to_exit )
+	while ( !received_msg and !time_to_exit )
 	{
 		// ----------------------------------------------------------------------
 		//   READ MESSAGE
@@ -185,17 +180,11 @@ uart_read_messages()
 				uart_recv_queue.compid = message.compid;
 				sem_post(&uart_recv_queue.sem);
 			}
-			received_all = true;
-			uart_read_ready = true;
+			received_msg = true;
 
 			printf("UART received message: [MAGIC]: 0x%02X, [SYSID]: %d, [COMPID]: %d, [SEQ]: %d, [MSGID]: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
+			sem_post(&uart_read_ready);
 		} // end: if read message
-
-		// give the write thread time to use the port
-		if ( uart_writing_status > 0 ) {
-			usleep(100); // look for components of batches at 10kHz
-		}
-
 	} // end: while not received all
 
 	return;
@@ -251,78 +240,23 @@ start()
 		throw 1;
 	}
 
-
-	// --------------------------------------------------------------------------
-	//   READ THREAD
-	// --------------------------------------------------------------------------
-
-	printf("START READ THREAD \n");
-
+	printf("START READ THREAD\n");
 	result = pthread_create( &telem_read_tid, NULL, &start_autopilot_interface_telem_read_thread, this );
 	if ( result ) throw result;
 	result = pthread_create( &uart_read_tid, NULL, &start_autopilot_interface_uart_read_thread, this );
 	if ( result ) throw result;
 
-	// now we're reading messages
-	printf("\n");
-
-
-	// --------------------------------------------------------------------------
-	//   CHECK FOR MESSAGES
-	// --------------------------------------------------------------------------
-
-	// printf("CHECK FOR MESSAGES\n");
-
-	// while ( ! telem_recv_queue.sysid )
-	// {
-	// 	if ( time_to_exit )
-	// 		return;
-	// 	usleep(500000); // check at 2Hz
-	// }
-
-	// printf("Found\n");
-
-	// now we know autopilot is sending messages
-	// printf("\n");
-
-
-	// --------------------------------------------------------------------------
-	//   GET SYSTEM and COMPONENT IDs
-	// --------------------------------------------------------------------------
-
-	// This comes from the heartbeat, which in theory should only come from
-	// the autopilot we're directly connected to it.  If there is more than one
-	// vehicle then we can't expect to discover id's like this.
-	// In which case set the id's manually.
-
-	// System ID
-	// if ( not system_id )
-	// {
-	// 	system_id = telem_recv_queue.sysid;
-	// 	printf("GOT VEHICLE SYSTEM ID: %i\n", system_id );
-	// }
-
-	// Component ID
-	// if ( not autopilot_id )
-	// {
-	// 	autopilot_id = telem_recv_queue.compid;
-	// 	printf("GOT AUTOPILOT COMPONENT ID: %i\n", autopilot_id);
-	// 	printf("\n");
-	// }
-
-	// --------------------------------------------------------------------------
-	//   WRITE THREAD
-	// --------------------------------------------------------------------------
-	printf("START WRITE THREAD \n");
-
+	printf("START WRITE THREAD\n");
 	result = pthread_create( &telem_write_tid, NULL, &start_autopilot_interface_telem_write_thread, this );
 	if ( result ) throw result;
 	result = pthread_create( &uart_write_tid, NULL, &start_autopilot_interface_uart_write_thread, this );
 	if ( result ) throw result;
 
-	// now we're streaming setpoint commands
-	printf("\n");
-
+	printf("START ENCRYPT/DECRYPT THREAD\n");
+	result = pthread_create( &decrypt_tid, NULL, &start_autopilot_interface_decrypt_thread, this );
+	if ( result ) throw result;
+	result = pthread_create( &encrypt_tid, NULL, &start_autopilot_interface_encrypt_thread, this );
+	if ( result ) throw result;
 
 	// Done!
 	return;
@@ -350,11 +284,90 @@ stop()
 	pthread_join(telem_write_tid,NULL);
 	pthread_join(uart_read_tid, NULL);
 	pthread_join(uart_write_tid, NULL);
+	pthread_join(decrypt_tid, NULL);
+	pthread_join(encrypt_tid, NULL);
 
 	// now the read and write threads are closed
 	printf("\n");
 
 	// still need to close the port separately
+}
+
+void
+Autopilot_Interface::start_decrypt_thread()
+{
+	while ( ! time_to_exit )
+	{
+		sem_wait(&telem_read_ready);
+
+		sem_wait(&telem_recv_queue.sem);
+		sem_wait(&uart_send_queue.sem);
+
+		printf("Telem copy to UART\n");
+
+		uint32_t copy_size = telem_recv_queue.message_queue.size;
+		if (copy_size + uart_send_queue.message_queue.size > MAX_QUEUE_SIZE) {
+			printf("WARNING: uart_send_queue not enough\n");
+			copy_size = MAX_QUEUE_SIZE - uart_send_queue.message_queue.size;
+		}
+
+		mavlink_message_t tmp;
+		for (uint32_t i = 0; i < copy_size; i++) {
+			if (dequeue(&telem_recv_queue.message_queue, &tmp)) {
+				printf("Should not get here\n");
+				break;
+			}
+			if (enqueue(&uart_send_queue.message_queue, tmp)) {
+				printf("Should not get here\n");
+				break;
+			}
+		}
+
+		sem_post(&uart_send_queue.sem);
+		sem_post(&telem_recv_queue.sem);
+
+		sem_post(&telem_read_ready);
+
+		sem_post(&uart_write_ready);
+	}
+}
+
+void
+Autopilot_Interface::start_encrypt_thread()
+{
+	while (!time_to_exit) {
+		sem_wait(&uart_read_ready);
+
+		sem_wait(&uart_recv_queue.sem);
+		sem_wait(&telem_send_queue.sem);
+
+		printf("UART copy to Telem\n");
+
+		uint32_t copy_size = uart_recv_queue.message_queue.size;
+		if (copy_size + telem_send_queue.message_queue.size > MAX_QUEUE_SIZE) {
+			printf("WARNING: telem_send_queue not enough\n");
+			copy_size = MAX_QUEUE_SIZE - telem_send_queue.message_queue.size;
+		}
+
+		mavlink_message_t tmp;
+		for (uint32_t i = 0; i < copy_size; i++) {
+			if (dequeue(&uart_recv_queue.message_queue, &tmp)) {
+				printf("Should not get here\n");
+				break;
+			}
+			if (enqueue(&telem_send_queue.message_queue, tmp)) {
+				printf("Should not get here\n");
+				break;
+			}
+		}
+
+		sem_post(&telem_send_queue.sem);
+		sem_post(&uart_recv_queue.sem);
+
+		sem_post(&uart_read_ready);
+
+		sem_post(&telem_write_ready);
+	}
 }
 
 // ------------------------------------------------------------------------------
@@ -364,13 +377,6 @@ void
 Autopilot_Interface::
 start_telem_read_thread()
 {
-
-	if ( telem_reading_status != 0 )
-	{
-		fprintf(stderr,"read thread already running\n");
-		return;
-	}
-	else
 	{
 		telem_read_thread();
 		return;
@@ -386,13 +392,6 @@ void
 Autopilot_Interface::
 start_telem_write_thread(void)
 {
-	if ( telem_writing_status )
-	{
-		fprintf(stderr,"write thread already running\n");
-		return;
-	}
-
-	else
 	{
 		telem_write_thread();
 		return;
@@ -404,13 +403,6 @@ void
 Autopilot_Interface::
 start_uart_read_thread()
 {
-
-	if ( uart_reading_status != 0 )
-	{
-		fprintf(stderr,"read thread already running\n");
-		return;
-	}
-	else
 	{
 		uart_read_thread();
 		return;
@@ -426,13 +418,6 @@ void
 Autopilot_Interface::
 start_uart_write_thread(void)
 {
-	if ( uart_writing_status )
-	{
-		fprintf(stderr,"write thread already running\n");
-		return;
-	}
-
-	else
 	{
 		uart_write_thread();
 		return;
@@ -471,15 +456,11 @@ void
 Autopilot_Interface::
 telem_read_thread()
 {
-	telem_reading_status = true;
-
 	while ( ! time_to_exit )
 	{
 		telem_read_messages();
 		// usleep(100000); // Read batches at 10Hz
 	}
-
-	telem_reading_status = false;
 
 	return;
 }
@@ -493,17 +474,11 @@ Autopilot_Interface::
 telem_write_thread(void)
 {
 	while (!time_to_exit) {
-		if (time_to_exit) {
-			break;
-		}
+		sem_wait(&telem_write_ready);
 
 		if (queue_empty(&telem_send_queue.message_queue)) {
 			continue;
 		}
-
-		telem_write_ready = false;
-
-		telem_writing_status = 1;
 
 		mavlink_message_t msg;
 		{
@@ -521,11 +496,6 @@ telem_write_thread(void)
 		} else {
 			printf("Telem sent message: [SEQ]: %d, [SYSID]: %d, [COMPID]: %d, [MSGID]: %d\n", msg.seq, msg.sysid, msg.compid, msg.msgid);
 		}
-
-		// signal end
-		telem_writing_status = 0;
-
-		usleep(100000);	// 10Hz
 	}
 
 	return;
@@ -536,15 +506,10 @@ void
 Autopilot_Interface::
 uart_read_thread()
 {
-	uart_reading_status = true;
-
 	while ( ! time_to_exit )
 	{
 		uart_read_messages();
-		// usleep(100000); // Read batches at 10Hz
 	}
-
-	uart_reading_status = false;
 
 	return;
 }
@@ -566,10 +531,6 @@ uart_write_thread(void)
 			continue;
 		}
 
-		uart_write_ready = false;
-
-		uart_writing_status = true;
-
 		mavlink_message_t msg;
 		{
 			// std::lock_guard<std::mutex> lock(uart_send_queue.mutex);
@@ -586,9 +547,6 @@ uart_write_thread(void)
 			printf("UART sent message: [SEQ]: %d, [SYSID]: %d, [COMPID]: %d, [MSGID]: %d\n", msg.seq, msg.sysid, msg.compid, msg.msgid);
 		}
 
-		uart_writing_status = false;
-
-		usleep(100000);	// 10Hz
 	}
 
 	return;
@@ -601,6 +559,23 @@ uart_write_thread(void)
 // ------------------------------------------------------------------------------
 //  Pthread Starter Helper Functions
 // ------------------------------------------------------------------------------
+
+void*
+start_autopilot_interface_decrypt_thread(void *arg) {
+	Autopilot_Interface *ai = (Autopilot_Interface *) arg;
+	ai->start_decrypt_thread();
+
+	return NULL;
+}
+
+void*
+start_autopilot_interface_encrypt_thread(void *arg) {
+	Autopilot_Interface *ai = (Autopilot_Interface *) arg;
+	ai->start_encrypt_thread();
+
+	return NULL;
+}
+
 
 void*
 start_autopilot_interface_telem_read_thread(void *args)
@@ -653,4 +628,3 @@ start_autopilot_interface_uart_write_thread(void *args)
 	// done!
 	return NULL;
 }
-

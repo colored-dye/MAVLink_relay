@@ -1,10 +1,9 @@
 #ifndef __QUEUE_H__
 #define __QUEUE_H__
 
-#include <bits/stdint-uintn.h>
 #include <mavlink_types.h>
 
-#define MAX_QUEUE_SIZE 1024
+#define MAX_QUEUE_SIZE 1
 
 typedef struct queue_ {
     mavlink_message_t raw_queue[MAX_QUEUE_SIZE];

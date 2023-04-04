@@ -187,96 +187,7 @@ void
 commands(Autopilot_Interface &autopilot_interface, bool autotakeoff)
 {
 	while (!autopilot_interface.time_to_exit) {
-		if (autopilot_interface.time_to_exit) {
-			break;
-		}
 
-		if (!queue_empty(&autopilot_interface.uart_recv_queue.message_queue)) {
-			printf("UART copy to Telem\n");
-			{
-				// std::lock_guard<std::mutex> lock1(autopilot_interface.uart_recv_queue.mutex);
-				// std::lock_guard<std::mutex> lock2(autopilot_interface.telem_send_queue.mutex);
-
-				sem_wait(&autopilot_interface.uart_recv_queue.sem);
-				sem_wait(&autopilot_interface.telem_send_queue.sem);
-
-				uint32_t copy_size = autopilot_interface.uart_recv_queue.message_queue.size;
-
-				if (copy_size + autopilot_interface.telem_send_queue.message_queue.size > MAX_QUEUE_SIZE) {
-					fprintf(stderr, "WARNING: telem_send_queue not enough!\n");
-					copy_size = MAX_QUEUE_SIZE - autopilot_interface.telem_send_queue.message_queue.size;
-				}
-
-				mavlink_message_t tmp;
-				for (uint32_t i = 0; i < copy_size; i++) {
-					if (dequeue(&autopilot_interface.uart_recv_queue.message_queue, &tmp)) {
-						fprintf(stderr, "Should not get here\n");
-						break;
-					}
-					if (enqueue(&autopilot_interface.telem_send_queue.message_queue, tmp)) {
-						fprintf(stderr, "Should not get here\n");
-						break;
-					}
-				}
-
-				if (autopilot_interface.telem_send_queue.message_queue.size) {
-					printf("[telem_send_queue] size: %u\n", autopilot_interface.telem_send_queue.message_queue.size);
-				}
-
-				autopilot_interface.telem_send_queue.sysid = autopilot_interface.uart_recv_queue.sysid;
-				autopilot_interface.telem_send_queue.compid = autopilot_interface.uart_recv_queue.compid;
-
-				autopilot_interface.telem_write_ready = true;
-				autopilot_interface.uart_read_ready = false;
-
-				sem_post(&autopilot_interface.telem_send_queue.sem);
-				sem_post(&autopilot_interface.uart_recv_queue.sem);
-			}
-		}
-
-		if (!queue_empty(&autopilot_interface.telem_recv_queue.message_queue)) {
-			printf("Telem copy to UART\n");
-			{
-				// std::lock_guard<std::mutex> lock1(autopilot_interface.telem_recv_queue.mutex);
-				// std::lock_guard<std::mutex> lock2(autopilot_interface.uart_send_queue.mutex);
-				sem_wait(&autopilot_interface.telem_recv_queue.sem);
-				sem_wait(&autopilot_interface.uart_send_queue.sem);
-
-				uint32_t copy_size = autopilot_interface.telem_recv_queue.message_queue.size;
-
-				if (copy_size + autopilot_interface.uart_send_queue.message_queue.size > MAX_QUEUE_SIZE) {
-					fprintf(stderr, "WARNING: uart_send_queue not enough!\n");
-					copy_size = MAX_QUEUE_SIZE - autopilot_interface.uart_send_queue.message_queue.size;
-				}
-
-				mavlink_message_t tmp;
-				for (uint32_t i = 0; i < copy_size; i++) {
-					if (dequeue(&autopilot_interface.telem_recv_queue.message_queue, &tmp)) {
-						fprintf(stderr, "Should not get here\n");
-						break;
-					}
-					if (enqueue(&autopilot_interface.uart_send_queue.message_queue, tmp)) {
-						fprintf(stderr, "Should not get here\n");
-						break;
-					}
-				}
-
-				if (autopilot_interface.uart_send_queue.message_queue.size >= MAX_QUEUE_SIZE) {
-					printf("[uart_send_queue] size: %u\n", autopilot_interface.uart_send_queue.message_queue.size);
-				}
-
-				autopilot_interface.uart_send_queue.sysid = autopilot_interface.telem_recv_queue.sysid;
-				autopilot_interface.uart_send_queue.compid = autopilot_interface.telem_recv_queue.compid;
-
-				autopilot_interface.uart_write_ready = true;
-				autopilot_interface.telem_read_ready = false;
-
-				sem_post(&autopilot_interface.uart_send_queue.sem);
-				sem_post(&autopilot_interface.telem_recv_queue.sem);
-			}
-		}
-
-		usleep(100000); // 10Hz
 	}
 }
 
@@ -401,7 +312,7 @@ main(int argc, char **argv)
 
 	catch ( int error )
 	{
-		fprintf(stderr,"mavlink_control threw exception %i \n" , error);
+		printf("mavlink_control threw exception %i \n" , error);
 		return error;
 	}
 
