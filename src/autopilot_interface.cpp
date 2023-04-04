@@ -50,6 +50,8 @@ get_time_usec()
 Autopilot_Interface::
 Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 {
+	time_to_exit = false;
+
 	// initialize attributes
 	telem_write_count = 0;
 	uart_write_count = 0;
@@ -58,6 +60,12 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 	sem_init(&telem_write_ready, 0, 0);
 	sem_init(&uart_read_ready, 0, 0);
 	sem_init(&uart_write_ready, 0, 0);
+
+	sem_init(&telem_read_finish, 0, 0);
+	sem_init(&uart_read_finish, 0, 0);
+
+	sem_post(&telem_read_finish);
+	sem_post(&uart_read_finish);
 
 	// sem_post(&telem_read_ready);
 	// sem_post(&telem_write_ready);
@@ -69,6 +77,8 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 
 	uart_read_tid  = 0; // read thread id
 	uart_write_tid = 0; // write thread id
+
+	decrypt_tid = encrypt_tid = 0;
 
 	system_id    = 0; // system id
 	autopilot_id = 0; // autopilot component id
@@ -137,9 +147,6 @@ telem_read_messages()
 			received_msg = true;
 
 			printf("Telem received message: [MAGIC]: 0x%02X, [SYSID]: %d, [COMPID]: %d, [SEQ]: %d, [MSGID]: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
-
-			// Tell decrypt that data is ready
-			sem_post(&telem_read_ready);			
 		} // end: if read message
 	} // end: while not received all
 
@@ -183,7 +190,6 @@ uart_read_messages()
 			received_msg = true;
 
 			printf("UART received message: [MAGIC]: 0x%02X, [SYSID]: %d, [COMPID]: %d, [SEQ]: %d, [MSGID]: %d\n", message.magic, message.sysid, message.compid, message.seq, message.msgid);
-			sem_post(&uart_read_ready);
 		} // end: if read message
 	} // end: while not received all
 
@@ -252,11 +258,18 @@ start()
 	result = pthread_create( &uart_write_tid, NULL, &start_autopilot_interface_uart_write_thread, this );
 	if ( result ) throw result;
 
-	printf("START ENCRYPT/DECRYPT THREAD\n");
+	printf("START DECRYPT THREAD\n");
 	result = pthread_create( &decrypt_tid, NULL, &start_autopilot_interface_decrypt_thread, this );
-	if ( result ) throw result;
+	if ( result ) {
+		puts("Failed");
+		throw result;
+	}
+	printf("START ENCRYPT THREAD\n");
 	result = pthread_create( &encrypt_tid, NULL, &start_autopilot_interface_encrypt_thread, this );
-	if ( result ) throw result;
+	if ( result ) {
+		puts("Failed");
+		throw result;
+	}
 
 	// Done!
 	return;
@@ -326,9 +339,11 @@ Autopilot_Interface::start_decrypt_thread()
 		sem_post(&uart_send_queue.sem);
 		sem_post(&telem_recv_queue.sem);
 
-		sem_post(&telem_read_ready);
-
+		// uart_write_thread
 		sem_post(&uart_write_ready);
+
+		// telem_read_thread resume
+		// sem_post(&telem_read_finish);
 	}
 }
 
@@ -364,9 +379,11 @@ Autopilot_Interface::start_encrypt_thread()
 		sem_post(&telem_send_queue.sem);
 		sem_post(&uart_recv_queue.sem);
 
-		sem_post(&uart_read_ready);
-
+		// telem_write thread
 		sem_post(&telem_write_ready);
+
+		// uart_read thread resume
+		// sem_post(&uart_read_finish);
 	}
 }
 
@@ -458,8 +475,9 @@ telem_read_thread()
 {
 	while ( ! time_to_exit )
 	{
+		sem_wait(&telem_read_finish);
 		telem_read_messages();
-		// usleep(100000); // Read batches at 10Hz
+		sem_post(&telem_read_ready);
 	}
 
 	return;
@@ -484,7 +502,7 @@ telem_write_thread(void)
 		{
 			// std::lock_guard<std::mutex> lock(telem_send_queue.mutex);
 			sem_wait(&telem_send_queue.sem);
-			printf("telem_write_thread obtains lock\n");
+			// printf("telem_write_thread obtains lock\n");
 			if (dequeue(&telem_send_queue.message_queue, &msg)) {
 				fprintf(stderr, "WARNING: telem_send_queue empty!\n");
 			}
@@ -496,6 +514,9 @@ telem_write_thread(void)
 		} else {
 			printf("Telem sent message: [SEQ]: %d, [SYSID]: %d, [COMPID]: %d, [MSGID]: %d\n", msg.seq, msg.sysid, msg.compid, msg.msgid);
 		}
+
+		// uart_read thread resume
+		sem_post(&uart_read_finish);
 	}
 
 	return;
@@ -508,7 +529,9 @@ uart_read_thread()
 {
 	while ( ! time_to_exit )
 	{
+		sem_wait(&uart_read_finish);
 		uart_read_messages();
+		sem_post(&uart_read_ready);
 	}
 
 	return;
@@ -523,9 +546,7 @@ Autopilot_Interface::
 uart_write_thread(void)
 {
 	while (!time_to_exit) {
-		if (time_to_exit) {
-			break;
-		}
+		sem_wait(&uart_write_ready);
 
 		if (queue_empty(&uart_send_queue.message_queue)) {
 			continue;
@@ -547,6 +568,8 @@ uart_write_thread(void)
 			printf("UART sent message: [SEQ]: %d, [SYSID]: %d, [COMPID]: %d, [MSGID]: %d\n", msg.seq, msg.sysid, msg.compid, msg.msgid);
 		}
 
+		// telem_read_thread resume
+		sem_post(&telem_read_finish);
 	}
 
 	return;

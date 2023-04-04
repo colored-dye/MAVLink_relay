@@ -96,6 +96,7 @@ public:
 
 	sem_t telem_read_ready, telem_write_ready;
 	sem_t uart_read_ready, uart_write_ready;
+	sem_t telem_read_finish, uart_read_finish;
 
 	struct MAVLink_Message telem_send_queue;
 	struct MAVLink_Message telem_recv_queue;
