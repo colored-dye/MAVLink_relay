@@ -18,6 +18,7 @@
 //   Includes
 // ------------------------------------------------------------------------------
 
+#include <bits/stdint-uintn.h>
 #include <cstdlib>
 #include <stdio.h>   // Standard input/output definitions
 #include <unistd.h>  // UNIX standard function definitions
@@ -87,6 +88,9 @@ private:
 	int  fd;
 	mavlink_status_t lastStatus;
 	pthread_mutex_t  lock;
+
+	unsigned char buffer[4096];
+	uint32_t buffer_index;
 
 	int port_comm;
 

@@ -53,6 +53,8 @@
 // ------------------------------------------------------------------------------
 
 #include "serial_port.h"
+#include <bits/stdint-uintn.h>
+#include <cstdio>
 
 
 // ----------------------------------------------------------------------------------
@@ -69,6 +71,8 @@ Serial_Port(const char *uart_name_ , int baudrate_, int telem_or_uart)
 	uart_name = uart_name_;
 	baudrate  = baudrate_;
 	port_comm = telem_or_uart;
+
+	buffer_index = 0;
 }
 
 Serial_Port::
@@ -124,6 +128,7 @@ read_message(mavlink_message_t &message)
 	// this function locks the port during read
 	int result = _read_port(cp);
 
+	buffer[buffer_index++] = cp;
 
 	// --------------------------------------------------------------------------
 	//   PARSE MESSAGE
@@ -131,18 +136,35 @@ read_message(mavlink_message_t &message)
 	if (result > 0)
 	{
 		// the parsing
-		// if (port_comm == 0) {
+		if (port_comm == 0) {
 			msgReceived = mavlink_parse_char(MAVLINK_COMM_0, cp, &message, &status);
-		// } else if (port_comm == 1) {
-			// msgReceived = mavlink_parse_char(MAVLINK_COMM_1, cp, &message, &status);
-		// }
+		} else if (port_comm == 1) {
+			msgReceived = mavlink_parse_char(MAVLINK_COMM_1, cp, &message, &status);
+		}
 
 		// check for dropped packets
 		if ( (lastStatus.packet_rx_drop_count != status.packet_rx_drop_count) && debug )
 		{
-			printf("ERROR: DROPPED %d PACKETS\n", status.packet_rx_drop_count);
+			printf("ERROR: port [%d] DROPPED %d PACKETS\n", port_comm, status.packet_rx_drop_count);
 			unsigned char v=cp;
 			fprintf(stderr,"%02x \n", v);
+
+			fprintf(stderr, "\nMavlink state:\n");
+			fprintf(stderr, "buffer_overrun: %d\n", status.buffer_overrun);
+			fprintf(stderr, "packet_idx: %d\n", status.packet_idx);
+			fprintf(stderr, "current_rx_seq: %d\n", status.current_rx_seq);
+			fprintf(stderr, "current_tx_seq: %d\n", status.current_tx_seq);
+			fprintf(stderr, "packet_rx_success_count: %d\n", status.packet_rx_success_count);
+			fprintf(stderr, "packet_rx_drop_count: %d\n", status.packet_rx_drop_count);
+			fprintf(stderr, "flags: %d\n\n", status.flags);
+
+			fprintf(stderr, "\nBuffer(%u):\n", buffer_index);
+			for (uint32_t i=0; i < buffer_index; i++) {
+				fprintf(stderr, "%02X ", buffer[i]);
+			}
+			fprintf(stderr, "\n");
+
+			buffer_index = 0;
 		}
 		lastStatus = status;
 	}
@@ -158,6 +180,7 @@ read_message(mavlink_message_t &message)
 	// --------------------------------------------------------------------------
 	if(msgReceived && debug)
 	{
+		buffer_index = 0;
 		// Report info
 		// printf("Received message from serial with ID #%d (sys:%d|comp:%d):\n", message.msgid, message.sysid, message.compid);
 
