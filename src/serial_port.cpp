@@ -550,7 +550,7 @@ _write_port(char *buf, unsigned len)
 	const int bytesWritten = static_cast<int>(write(fd, buf, len));
 
 	// Wait until all data has been written
-	tcdrain(fd);
+	// tcdrain(fd);
 
 	// Unlock
 	pthread_mutex_unlock(&lock);

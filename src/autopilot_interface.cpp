@@ -20,6 +20,7 @@
 #include "generic_port.h"
 #include "mavlink_types.h"
 #include "queue.h"
+#include "log.h"
 #include <bits/stdint-uintn.h>
 #include <cstdio>
 #include <mutex>
@@ -61,11 +62,11 @@ Autopilot_Interface(Generic_Port *telem_port_, Generic_Port *uart_port_)
 	sem_init(&uart_read_ready, 0, 0);
 	sem_init(&uart_write_ready, 0, 0);
 
-	sem_init(&telem_read_finish, 0, 0);
-	sem_init(&uart_read_finish, 0, 0);
+	sem_init(&telem_read_continue, 0, 0);
+	sem_init(&uart_read_continue, 0, 0);
 
-	sem_post(&telem_read_finish);
-	sem_post(&uart_read_finish);
+	sem_post(&telem_read_continue);
+	sem_post(&uart_read_continue);
 
 	// sem_post(&telem_read_ready);
 	// sem_post(&telem_write_ready);
@@ -138,7 +139,7 @@ telem_read_messages()
 				// std::lock_guard<std::mutex> lock(telem_recv_queue.mutex);
 				sem_wait(&telem_recv_queue.sem);
 				if (enqueue(&telem_recv_queue.message_queue, message)) {
-					fprintf(stderr, "WARNING: telem_recv_queue full!\n");
+					MY_LOG("WARNING: telem_recv_queue full!\n");
 				}
 				telem_recv_queue.sysid  = message.sysid;
 				telem_recv_queue.compid = message.compid;
@@ -181,7 +182,7 @@ uart_read_messages()
 				// std::lock_guard<std::mutex> lock(uart_recv_queue.mutex);
 				sem_wait(&uart_recv_queue.sem);
 				if (enqueue(&uart_recv_queue.message_queue, message)) {
-					fprintf(stderr, "WARNING: uart_recv_queue full!\n");
+					MY_LOG("WARNING: uart_recv_queue full!\n");
 				}
 				uart_recv_queue.sysid  = message.sysid;
 				uart_recv_queue.compid = message.compid;
@@ -340,10 +341,11 @@ Autopilot_Interface::start_decrypt_thread()
 		sem_post(&telem_recv_queue.sem);
 
 		// uart_write_thread
+		printf("SIGNAL uart_write\n");
 		sem_post(&uart_write_ready);
 
 		// telem_read_thread resume
-		// sem_post(&telem_read_finish);
+		// sem_post(&telem_read_continue);
 	}
 }
 
@@ -367,11 +369,11 @@ Autopilot_Interface::start_encrypt_thread()
 		mavlink_message_t tmp;
 		for (uint32_t i = 0; i < copy_size; i++) {
 			if (dequeue(&uart_recv_queue.message_queue, &tmp)) {
-				printf("Should not get here\n");
+				MY_LOG("Should not get here\n");
 				break;
 			}
 			if (enqueue(&telem_send_queue.message_queue, tmp)) {
-				printf("Should not get here\n");
+				MY_LOG("Should not get here\n");
 				break;
 			}
 		}
@@ -380,10 +382,11 @@ Autopilot_Interface::start_encrypt_thread()
 		sem_post(&uart_recv_queue.sem);
 
 		// telem_write thread
+		printf("SIGNAL telem_write\n");
 		sem_post(&telem_write_ready);
 
 		// uart_read thread resume
-		// sem_post(&uart_read_finish);
+		// sem_post(&uart_read_continue);
 	}
 }
 
@@ -475,7 +478,7 @@ telem_read_thread()
 {
 	while ( ! time_to_exit )
 	{
-		sem_wait(&telem_read_finish);
+		sem_wait(&telem_read_continue);
 		telem_read_messages();
 		sem_post(&telem_read_ready);
 	}
@@ -504,19 +507,19 @@ telem_write_thread(void)
 			sem_wait(&telem_send_queue.sem);
 			// printf("telem_write_thread obtains lock\n");
 			if (dequeue(&telem_send_queue.message_queue, &msg)) {
-				fprintf(stderr, "WARNING: telem_send_queue empty!\n");
+				MY_LOG("WARNING: telem_send_queue empty!\n");
 			}
 			sem_post(&telem_send_queue.sem);
 		}
 		int len = telem_write_message(msg);
 		if (len <= 0) {
-			fprintf(stderr, "WARNING: Could not send message to telem\n");
+			MY_LOG("WARNING: Could not send message to telem\n");
 		} else {
 			printf("Telem sent message: [SEQ]: %d, [SYSID]: %d, [COMPID]: %d, [MSGID]: %d\n", msg.seq, msg.sysid, msg.compid, msg.msgid);
 		}
 
 		// uart_read thread resume
-		sem_post(&uart_read_finish);
+		sem_post(&uart_read_continue);
 	}
 
 	return;
@@ -529,7 +532,7 @@ uart_read_thread()
 {
 	while ( ! time_to_exit )
 	{
-		sem_wait(&uart_read_finish);
+		sem_wait(&uart_read_continue);
 		uart_read_messages();
 		sem_post(&uart_read_ready);
 	}
@@ -557,19 +560,19 @@ uart_write_thread(void)
 			// std::lock_guard<std::mutex> lock(uart_send_queue.mutex);
 			sem_wait(&uart_send_queue.sem);
 			if (dequeue(&uart_send_queue.message_queue, &msg)) {
-				fprintf(stderr, "WARNING: uart_send_queue empty!\n");
+				MY_LOG("WARNING: uart_send_queue empty!\n");
 			}
 			sem_post(&uart_send_queue.sem);
 		}
 		int len = uart_write_message(msg);
 		if (len <= 0) {
-			fprintf(stderr, "WARNING: Could not send message to uart\n");
+			MY_LOG("WARNING: Could not send message to uart\n");
 		} else {
 			printf("UART sent message: [SEQ]: %d, [SYSID]: %d, [COMPID]: %d, [MSGID]: %d\n", msg.seq, msg.sysid, msg.compid, msg.msgid);
 		}
 
 		// telem_read_thread resume
-		sem_post(&telem_read_finish);
+		sem_post(&telem_read_continue);
 	}
 
 	return;
